@@ -121,7 +121,7 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
             id INT AUTO_INCREMENT PRIMARY KEY,
             produto VARCHAR(255) NOT NULL,
             tipoLicenca VARCHAR(255),
-            chaveSerial VARCHAR(255) NOT NULL UNIQUE,
+            chaveSerial VARCHAR(255) NOT NULL,
             dataExpiracao VARCHAR(255),
             usuario VARCHAR(255) NOT NULL,
             cargo VARCHAR(255),
@@ -382,53 +382,21 @@ app.post('/api/equipment', async (req, res) => {
     try {
         await connection.beginTransaction();
         const { changedBy, userRole, ...equipmentData } = req.body;
-
-        if (!equipmentData.equipamento || equipmentData.equipamento.trim() === '') {
-            return res.status(400).json({ message: 'O campo "Equipamento" é obrigatório.' });
-        }
-
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
 
-        // Explicitly map request data to prevent SQL injection and handle nulls
-        const newEquipment = {
-            equipamento: equipmentData.equipamento,
-            garantia: equipmentData.garantia || null,
-            patrimonio: equipmentData.patrimonio || null,
-            serial: equipmentData.serial || null,
-            usuarioAtual: equipmentData.usuarioAtual || null,
-            usuarioAnterior: equipmentData.usuarioAnterior || null,
-            local: equipmentData.local || null,
-            setor: equipmentData.setor || null,
-            dataEntregaUsuario: equipmentData.dataEntregaUsuario || null,
-            status: equipmentData.status || null,
-            dataDevolucao: equipmentData.dataDevolucao || null,
-            tipo: equipmentData.tipo || null,
-            notaCompra: equipmentData.notaCompra || null,
-            notaPlKm: equipmentData.notaPlKm || null,
-            termoResponsabilidade: equipmentData.termoResponsabilidade || null,
-            foto: equipmentData.foto || null,
-            qrCode: equipmentData.qrCode || null,
-            observacoes: equipmentData.observacoes || null,
-            approval_status: approval_status,
-            rejection_reason: null
-        };
-        
-        const [result] = await connection.query('INSERT INTO equipment SET ?', newEquipment);
+        const [result] = await connection.query('INSERT INTO equipment SET ?', [{ ...equipmentData, approval_status }]);
         const newId = result.insertId;
-        
+
         const auditDetails = approval_status === 'pending_approval'
-            ? `Solicitada criação de equipamento: ${newEquipment.equipamento}`
-            : `Criado equipamento: ${newEquipment.equipamento}`;
+            ? `Solicitada criação de equipamento: ${equipmentData.equipamento}`
+            : `Criado equipamento: ${equipmentData.equipamento}`;
         
         await logAudit(changedBy, 'CREATE', 'EQUIPMENT', newId, auditDetails, connection);
         
         await connection.commit();
-        res.status(201).json({ id: newId, ...newEquipment });
+        res.status(201).json({ id: newId, ...equipmentData, approval_status });
     } catch (error) {
         await connection.rollback();
-        if (error.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ message: 'O Patrimônio informado já existe. Por favor, utilize outro.' });
-        }
         handleApiError(res, error, 'add equipment');
     } finally {
         connection.release();
@@ -519,32 +487,11 @@ app.post('/api/licenses', async (req, res) => {
     try {
         await connection.beginTransaction();
         const { changedBy, userRole, ...licenseData } = req.body;
-
-        if (!licenseData.produto?.trim() || !licenseData.chaveSerial?.trim() || !licenseData.usuario?.trim()) {
-            return res.status(400).json({ message: "Produto, Chave Serial e Usuário são campos obrigatórios." });
-        }
-
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
-        
-        // Define all columns for the insert to ensure order and completeness
-        const columns = [
-            'produto', 'tipoLicenca', 'chaveSerial', 'dataExpiracao', 'usuario', 'cargo',
-            'setor', 'gestor', 'centroCusto', 'contaRazao', 'nomeComputador',
-            'numeroChamado', 'observacoes', 'approval_status', 'rejection_reason'
-        ];
 
-        // Create an array of values in the correct order, converting empty/falsy values to null
-        const values = columns.map(col => {
-            if (col === 'approval_status') return approval_status;
-            if (col === 'rejection_reason') return null;
-            return licenseData[col] || null;
-        });
-
-        const sql = `INSERT INTO licenses (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
-        
-        const [result] = await connection.query(sql, values);
+        const [result] = await connection.query('INSERT INTO licenses SET ?', [{ ...licenseData, approval_status }]);
         const newId = result.insertId;
-        
+
         const auditDetails = approval_status === 'pending_approval'
             ? `Solicitada criação de licença para ${licenseData.produto}`
             : `Criada licença para ${licenseData.produto}`;
@@ -554,21 +501,17 @@ app.post('/api/licenses', async (req, res) => {
         res.status(201).json({ id: newId, ...licenseData, approval_status });
     } catch (error) {
         await connection.rollback();
-        if (error.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ message: 'A Chave Serial informada já existe. Por favor, verifique os dados.' });
-        }
         handleApiError(res, error, 'add license');
     } finally {
         connection.release();
     }
 });
 
-
 app.put('/api/licenses/:id', async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        const { changedBy, id, ...licenseData } = req.body; // Exclude id from the update payload
+        const { changedBy, ...licenseData } = req.body;
         await connection.query('UPDATE licenses SET ? WHERE id = ?', [licenseData, req.params.id]);
         await logAudit(changedBy, 'UPDATE', 'LICENSE', req.params.id, `Atualizada licença para ${licenseData.produto}`, connection);
         await connection.commit();

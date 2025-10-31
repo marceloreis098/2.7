@@ -1,3 +1,8 @@
+
+
+
+
+
 export enum UserRole {
   Admin = 'Admin',
   UserManager = 'User Manager',
@@ -75,7 +80,7 @@ export interface License {
     rejection_reason?: string;
 }
 
-export type Page = 'Dashboard' | 'Inventário de Equipamentos' | 'Inventário Absolute' | 'Controle de Licenças' | 'Usuários e Permissões' | 'Configurações' | 'Auditoria' | 'Meu Perfil';
+export type Page = 'Dashboard' | 'Inventário de Equipamentos' | 'Inventário Absolute' | 'Controle de Licenças' | 'Usuários e Permissões' | 'Configurações' | 'Auditoria';
 
 export interface DbStatus {
     status: string;

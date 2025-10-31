@@ -54,8 +54,8 @@ const AuditLog: React.FC = () => {
             case 'CREATE': return { text: 'Criação', color: 'text-green-500', icon: 'CirclePlus' };
             case 'UPDATE': return { text: 'Atualização', color: 'text-yellow-500', icon: 'Pencil' };
             case 'DELETE': return { text: 'Exclusão', color: 'text-red-500', icon: 'Trash2' };
-            // FIX: Corrected icon name to 'CircleQuestion' to resolve type error.
-            default: return { text: log.action_type, color: 'text-gray-500', icon: 'CircleQuestion' };
+            // FIX: Corrected icon name from 'HelpCircle' to 'CircleHelp' to resolve type error.
+            default: return { text: log.action_type, color: 'text-gray-500', icon: 'CircleHelp' };
         }
     };
 
