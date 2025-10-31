@@ -19,6 +19,8 @@ const pageIcons: { [key in Page]: keyof typeof icons } = {
     'Usuários e Permissões': 'Users',
     'Configurações': 'Settings',
     'Auditoria': 'History',
+    // FIX: Added 'Meu Perfil' to the pageIcons object to match the Page type and resolve the TypeScript error.
+    'Meu Perfil': 'User',
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, pages, isSidebarOpen, setIsSidebarOpen }) => {

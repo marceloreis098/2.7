@@ -15,6 +15,7 @@ const Settings = lazy(() => import('./components/Settings'));
 const Login = lazy(() => import('./components/Login'));
 const TwoFactorAuth = lazy(() => import('./components/TwoFactorAuth'));
 const AuditLog = lazy(() => import('./components/AuditLog'));
+const Profile = lazy(() => import('./components/Profile'));
 
 
 const LoadingFallback: React.FC = () => (
@@ -142,7 +143,14 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setUserAwaiting2FA(null);
     localStorage.removeItem('currentUser');
+    setActivePage('Dashboard');
   };
+  
+  const handleProfileUpdate = (updatedUser: User) => {
+      setCurrentUser(updatedUser);
+      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+  };
+
 
   const handleSettingsSave = async (settings: { 
     sso: boolean; ssoUrl: string; ssoEntityId: string; ssoCertificate: string; 
@@ -268,6 +276,8 @@ const App: React.FC = () => {
                     />;
         }
         return null;
+      case 'Meu Perfil':
+        return <Profile currentUser={currentUser} onProfileUpdate={handleProfileUpdate} />;
       default:
         return <Dashboard setActivePage={setActivePage} currentUser={currentUser} />;
     }
@@ -294,6 +304,7 @@ const App: React.FC = () => {
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             companyName={companyName}
             headerStyle={headerStyle}
+            setActivePage={setActivePage}
           />
         </Suspense>
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 animate-fade-in">
