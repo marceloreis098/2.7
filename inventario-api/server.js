@@ -382,8 +382,7 @@ app.post('/api/equipment', async (req, res) => {
     try {
         await connection.beginTransaction();
         const { changedBy, userRole, ...equipmentData } = req.body;
-        
-        // Server-side validation
+
         if (!equipmentData.equipamento || equipmentData.equipamento.trim() === '') {
             return res.status(400).json({ message: 'O campo "Equipamento" é obrigatório.' });
         }
@@ -398,29 +397,22 @@ app.post('/api/equipment', async (req, res) => {
             'approval_status', 'observacoes'
         ];
 
-        const columns = [];
-        const values = [];
-        const placeholders = [];
-
+        const filteredData = {};
         for (const col of allowedColumns) {
             if (dataToInsert[col] !== undefined) {
-                columns.push(`\`${col}\``);
                 let value = dataToInsert[col];
-                // Specific fix for patrimonio: convert '' to NULL to avoid UNIQUE constraint violation on nullable field
                 if (col === 'patrimonio' && value === '') {
                     value = null;
                 }
-                values.push(value);
-                placeholders.push('?');
+                filteredData[col] = value;
             }
         }
         
-        if (columns.length === 0) {
+        if (Object.keys(filteredData).length === 0) {
             return res.status(400).json({ message: 'No valid data provided to insert.' });
         }
 
-        const sql = `INSERT INTO equipment (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
-        const [result] = await connection.query(sql, values);
+        const [result] = await connection.query('INSERT INTO equipment SET ?', [filteredData]);
         const newId = result.insertId;
 
         const auditDetails = approval_status === 'pending_approval'
@@ -430,7 +422,7 @@ app.post('/api/equipment', async (req, res) => {
         await logAudit(changedBy, 'CREATE', 'EQUIPMENT', newId, auditDetails, connection);
         
         await connection.commit();
-        res.status(201).json({ id: newId, ...dataToInsert });
+        res.status(201).json({ id: newId, ...filteredData });
     } catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
@@ -527,7 +519,6 @@ app.post('/api/licenses', async (req, res) => {
         await connection.beginTransaction();
         const { changedBy, userRole, ...licenseData } = req.body;
 
-        // Server-side validation for required fields
         if (!licenseData.produto?.trim() || !licenseData.chaveSerial?.trim() || !licenseData.usuario?.trim()) {
             return res.status(400).json({ message: "Produto, Chave Serial e Usuário são campos obrigatórios e não podem estar em branco." });
         }
@@ -541,24 +532,18 @@ app.post('/api/licenses', async (req, res) => {
             'nomeComputador', 'numeroChamado', 'approval_status', 'observacoes'
         ];
 
-        const columns = [];
-        const values = [];
-        const placeholders = [];
-
+        const filteredData = {};
         for (const col of allowedColumns) {
             if (dataToInsert[col] !== undefined) {
-                columns.push(`\`${col}\``);
-                values.push(dataToInsert[col]); // Insert value as is
-                placeholders.push('?');
+                filteredData[col] = dataToInsert[col];
             }
         }
-        
-        if (columns.length === 0) {
+
+        if (Object.keys(filteredData).length === 0) {
             return res.status(400).json({ message: 'No valid data provided to insert.' });
         }
 
-        const sql = `INSERT INTO licenses (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
-        const [result] = await connection.query(sql, values);
+        const [result] = await connection.query('INSERT INTO licenses SET ?', [filteredData]);
         const newId = result.insertId;
         
         const auditDetails = approval_status === 'pending_approval'
@@ -567,7 +552,7 @@ app.post('/api/licenses', async (req, res) => {
         await logAudit(changedBy, 'CREATE', 'LICENSE', newId, auditDetails, connection);
 
         await connection.commit();
-        res.status(201).json({ id: newId, ...dataToInsert });
+        res.status(201).json({ id: newId, ...filteredData });
     } catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {

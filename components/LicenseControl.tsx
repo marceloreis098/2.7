@@ -394,7 +394,6 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             
             // Reload everything
             loadLicenses();
-        // FIX: Explicitly type error as 'any' to align with project conventions and resolve type error.
         } catch (error: any) {
             console.error("Failed to save product management changes", error);
             if (error instanceof Error) {
