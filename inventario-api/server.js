@@ -383,8 +383,34 @@ app.post('/api/equipment', async (req, res) => {
         await connection.beginTransaction();
         const { changedBy, userRole, ...equipmentData } = req.body;
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
+        const dataToInsert = { ...equipmentData, approval_status };
 
-        const [result] = await connection.query('INSERT INTO equipment SET ?', [{ ...equipmentData, approval_status }]);
+        // Whitelist columns to prevent SQL injection and errors from unexpected fields
+        const allowedColumns = [
+            'equipamento', 'garantia', 'patrimonio', 'serial', 'usuarioAtual', 'usuarioAnterior',
+            'local', 'setor', 'dataEntregaUsuario', 'status', 'dataDevolucao', 'tipo',
+            'notaCompra', 'notaPlKm', 'termoResponsabilidade', 'foto', 'qrCode',
+            'approval_status', 'observacoes'
+        ];
+
+        const columns = [];
+        const values = [];
+        const placeholders = [];
+
+        for (const col of allowedColumns) {
+            if (dataToInsert[col] !== undefined) {
+                columns.push(`\`${col}\``); // Use backticks for safety
+                values.push(dataToInsert[col]);
+                placeholders.push('?');
+            }
+        }
+        
+        if (columns.length === 0) {
+            return res.status(400).json({ message: 'No valid data provided to insert.' });
+        }
+
+        const sql = `INSERT INTO equipment (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
+        const [result] = await connection.query(sql, values);
         const newId = result.insertId;
 
         const auditDetails = approval_status === 'pending_approval'
@@ -394,7 +420,7 @@ app.post('/api/equipment', async (req, res) => {
         await logAudit(changedBy, 'CREATE', 'EQUIPMENT', newId, auditDetails, connection);
         
         await connection.commit();
-        res.status(201).json({ id: newId, ...equipmentData, approval_status });
+        res.status(201).json({ id: newId, ...dataToInsert });
     } catch (error) {
         await connection.rollback();
         handleApiError(res, error, 'add equipment');
