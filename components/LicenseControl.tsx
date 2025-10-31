@@ -396,8 +396,7 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             loadLicenses();
         } catch (error) {
             console.error("Failed to save product management changes", error);
-            // FIX: The error from a catch block is of type 'unknown' and cannot be directly passed to alert.
-            // Explicitly convert it to a string to fix the type error and provide a more detailed message.
+            // Fix: Cast error to string to prevent type error. 'error' is of type 'unknown' in a catch block.
             alert(`Ocorreu um erro ao salvar as alterações nos produtos: ${String(error)}`);
         }
     };

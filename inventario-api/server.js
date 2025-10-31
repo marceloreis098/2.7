@@ -385,7 +385,6 @@ app.post('/api/equipment', async (req, res) => {
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
         const dataToInsert = { ...equipmentData, approval_status };
 
-        // Whitelist columns to prevent SQL injection and errors from unexpected fields
         const allowedColumns = [
             'equipamento', 'garantia', 'patrimonio', 'serial', 'usuarioAtual', 'usuarioAnterior',
             'local', 'setor', 'dataEntregaUsuario', 'status', 'dataDevolucao', 'tipo',
@@ -399,8 +398,9 @@ app.post('/api/equipment', async (req, res) => {
 
         for (const col of allowedColumns) {
             if (dataToInsert[col] !== undefined) {
-                columns.push(`\`${col}\``); // Use backticks for safety
-                values.push(dataToInsert[col]);
+                columns.push(`\`${col}\``);
+                // Convert empty strings to null to avoid UNIQUE constraint errors on optional fields like 'patrimonio'
+                values.push(dataToInsert[col] === '' ? null : dataToInsert[col]);
                 placeholders.push('?');
             }
         }
@@ -516,7 +516,6 @@ app.post('/api/licenses', async (req, res) => {
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
         const dataToInsert = { ...licenseData, approval_status };
 
-        // Whitelist columns to prevent SQL injection and errors from unexpected fields
         const allowedColumns = [
             'produto', 'tipoLicenca', 'chaveSerial', 'dataExpiracao', 'usuario',
             'cargo', 'setor', 'gestor', 'centroCusto', 'contaRazao',
@@ -528,10 +527,10 @@ app.post('/api/licenses', async (req, res) => {
         const placeholders = [];
 
         for (const col of allowedColumns) {
-            // Ensure the property exists and is not undefined to avoid inserting NULL for missing fields
             if (dataToInsert[col] !== undefined) {
-                columns.push(`\`${col}\``); // Use backticks for safety
-                values.push(dataToInsert[col]);
+                columns.push(`\`${col}\``);
+                // Convert empty strings to null for optional fields
+                values.push(dataToInsert[col] === '' ? null : dataToInsert[col]);
                 placeholders.push('?');
             }
         }
