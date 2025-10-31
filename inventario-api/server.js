@@ -399,7 +399,6 @@ app.post('/api/equipment', async (req, res) => {
         for (const col of allowedColumns) {
             if (dataToInsert[col] !== undefined) {
                 columns.push(`\`${col}\``);
-                // Convert empty strings to null to avoid UNIQUE constraint errors on optional fields like 'patrimonio'
                 values.push(dataToInsert[col] === '' ? null : dataToInsert[col]);
                 placeholders.push('?');
             }
@@ -423,6 +422,9 @@ app.post('/api/equipment', async (req, res) => {
         res.status(201).json({ id: newId, ...dataToInsert });
     } catch (error) {
         await connection.rollback();
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ message: 'O Patrimônio informado já existe. Por favor, utilize outro.' });
+        }
         handleApiError(res, error, 'add equipment');
     } finally {
         connection.release();
@@ -529,7 +531,6 @@ app.post('/api/licenses', async (req, res) => {
         for (const col of allowedColumns) {
             if (dataToInsert[col] !== undefined) {
                 columns.push(`\`${col}\``);
-                // Convert empty strings to null for optional fields
                 values.push(dataToInsert[col] === '' ? null : dataToInsert[col]);
                 placeholders.push('?');
             }
@@ -552,6 +553,9 @@ app.post('/api/licenses', async (req, res) => {
         res.status(201).json({ id: newId, ...dataToInsert });
     } catch (error) {
         await connection.rollback();
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ message: 'A Chave Serial informada já existe. Por favor, verifique os dados.' });
+        }
         handleApiError(res, error, 'add license');
     } finally {
         connection.release();
