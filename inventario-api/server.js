@@ -389,33 +389,41 @@ app.post('/api/equipment', async (req, res) => {
 
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
 
-        const columns = [
-            'equipamento', 'garantia', 'patrimonio', 'serial', 'usuarioAtual', 'usuarioAnterior',
-            'local', 'setor', 'dataEntregaUsuario', 'status', 'dataDevolucao', 'tipo',
-            'notaCompra', 'notaPlKm', 'termoResponsabilidade', 'foto', 'qrCode', 'observacoes', 'approval_status'
-        ];
+        // Explicitly map request data to prevent SQL injection and handle nulls
+        const newEquipment = {
+            equipamento: equipmentData.equipamento,
+            garantia: equipmentData.garantia || null,
+            patrimonio: equipmentData.patrimonio || null,
+            serial: equipmentData.serial || null,
+            usuarioAtual: equipmentData.usuarioAtual || null,
+            usuarioAnterior: equipmentData.usuarioAnterior || null,
+            local: equipmentData.local || null,
+            setor: equipmentData.setor || null,
+            dataEntregaUsuario: equipmentData.dataEntregaUsuario || null,
+            status: equipmentData.status || null,
+            dataDevolucao: equipmentData.dataDevolucao || null,
+            tipo: equipmentData.tipo || null,
+            notaCompra: equipmentData.notaCompra || null,
+            notaPlKm: equipmentData.notaPlKm || null,
+            termoResponsabilidade: equipmentData.termoResponsabilidade || null,
+            foto: equipmentData.foto || null,
+            qrCode: equipmentData.qrCode || null,
+            observacoes: equipmentData.observacoes || null,
+            approval_status: approval_status,
+            rejection_reason: null
+        };
         
-        const dataToInsert = {};
-        for (const col of columns) {
-            if (col === 'approval_status') {
-                dataToInsert[col] = approval_status;
-            } else {
-                const value = equipmentData[col];
-                dataToInsert[col] = (value === '' || value === undefined) ? null : value;
-            }
-        }
-        
-        const [result] = await connection.query('INSERT INTO equipment SET ?', dataToInsert);
+        const [result] = await connection.query('INSERT INTO equipment SET ?', newEquipment);
         const newId = result.insertId;
         
         const auditDetails = approval_status === 'pending_approval'
-            ? `Solicitada criação de equipamento: ${equipmentData.equipamento}`
-            : `Criado equipamento: ${equipmentData.equipamento}`;
+            ? `Solicitada criação de equipamento: ${newEquipment.equipamento}`
+            : `Criado equipamento: ${newEquipment.equipamento}`;
         
         await logAudit(changedBy, 'CREATE', 'EQUIPMENT', newId, auditDetails, connection);
         
         await connection.commit();
-        res.status(201).json({ id: newId, ...equipmentData, approval_status });
+        res.status(201).json({ id: newId, ...newEquipment });
     } catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
@@ -518,32 +526,35 @@ app.post('/api/licenses', async (req, res) => {
 
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
         
-        const columns = [
-            'produto', 'tipoLicenca', 'chaveSerial', 'dataExpiracao', 'usuario', 'cargo', 'setor',
-            'gestor', 'centroCusto', 'contaRazao', 'nomeComputador', 'numeroChamado',
-            'observacoes', 'approval_status'
-        ];
+        // Explicitly map request data to prevent SQL injection and handle nulls
+        const newLicense = {
+            produto: licenseData.produto,
+            tipoLicenca: licenseData.tipoLicenca || null,
+            chaveSerial: licenseData.chaveSerial,
+            dataExpiracao: licenseData.dataExpiracao || null,
+            usuario: licenseData.usuario,
+            cargo: licenseData.cargo || null,
+            setor: licenseData.setor || null,
+            gestor: licenseData.gestor || null,
+            centroCusto: licenseData.centroCusto || null,
+            contaRazao: licenseData.contaRazao || null,
+            nomeComputador: licenseData.nomeComputador || null,
+            numeroChamado: licenseData.numeroChamado || null,
+            observacoes: licenseData.observacoes || null,
+            approval_status: approval_status,
+            rejection_reason: null
+        };
         
-        const dataToInsert = {};
-        for (const col of columns) {
-            if (col === 'approval_status') {
-                dataToInsert[col] = approval_status;
-            } else {
-                const value = licenseData[col];
-                dataToInsert[col] = (value === '' || value === undefined) ? null : value;
-            }
-        }
-        
-        const [result] = await connection.query('INSERT INTO licenses SET ?', dataToInsert);
+        const [result] = await connection.query('INSERT INTO licenses SET ?', newLicense);
         const newId = result.insertId;
         
         const auditDetails = approval_status === 'pending_approval'
-            ? `Solicitada criação de licença para ${licenseData.produto}`
-            : `Criada licença para ${licenseData.produto}`;
+            ? `Solicitada criação de licença para ${newLicense.produto}`
+            : `Criada licença para ${newLicense.produto}`;
         await logAudit(changedBy, 'CREATE', 'LICENSE', newId, auditDetails, connection);
 
         await connection.commit();
-        res.status(201).json({ id: newId, ...licenseData, approval_status });
+        res.status(201).json({ id: newId, ...newLicense });
     } catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
