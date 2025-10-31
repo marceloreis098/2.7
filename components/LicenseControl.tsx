@@ -396,6 +396,7 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             loadLicenses();
 // FIX: Changed caught error from 'any' to 'unknown' for improved type safety, which is a best practice.
         } catch (error: unknown) {
+            // FIX: Safely handle the unknown error type to prevent a type error when calling alert.
             console.error("Failed to save product management changes", error);
             if (error instanceof Error) {
                 alert(`Ocorreu um erro ao salvar as alterações nos produtos: ${error.message}`);
