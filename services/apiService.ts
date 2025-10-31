@@ -169,6 +169,20 @@ export const renameProduct = async (oldName: string, newName: string, changedBy:
     return handleResponse(response);
 };
 
+export const getLicenseTotals = async (): Promise<Record<string, number>> => {
+    const response = await fetch(`${API_BASE_URL}/config/licenseTotals`);
+    return handleResponse(response);
+};
+
+export const saveLicenseTotals = async (totals: Record<string, number>, changedBy: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/config/licenseTotals`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ totals, changedBy }),
+    });
+    return handleResponse(response);
+};
+
 
 // Users
 export const getUsers = async (): Promise<User[]> => {

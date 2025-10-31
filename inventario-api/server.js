@@ -143,6 +143,13 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `;
     
+    const createAppConfigTable = `
+        CREATE TABLE IF NOT EXISTS app_config (
+            config_key VARCHAR(255) PRIMARY KEY,
+            config_value TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `;
+
     const dbSetupConnection = await connectionPool.getConnection();
     try {
         await dbSetupConnection.query(createUsersTable);
@@ -150,6 +157,7 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
         await dbSetupConnection.query(createHistoryTable);
         await dbSetupConnection.query(createLicensesTable);
         await dbSetupConnection.query(createAuditLogTable);
+        await dbSetupConnection.query(createAppConfigTable);
 
 
         // Seed admin user if not exists
@@ -541,6 +549,48 @@ app.put('/api/licenses/rename-product', async (req, res) => {
         connection.release();
     }
 });
+
+// --- CONFIG ROUTES ---
+app.get('/api/config/licenseTotals', async (req, res) => {
+    try {
+        const [rows] = await db.query("SELECT config_value FROM app_config WHERE config_key = 'licenseTotals'");
+        if (rows.length > 0 && rows[0].config_value) {
+            res.json(JSON.parse(rows[0].config_value));
+        } else {
+            res.json({}); // Return empty object if not set
+        }
+    } catch (error) {
+        handleApiError(res, error, 'get license totals');
+    }
+});
+
+app.post('/api/config/licenseTotals', async (req, res) => {
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { totals, changedBy } = req.body;
+        if (typeof changedBy !== 'string' || changedBy.trim() === '') {
+            return res.status(400).json({ message: 'changedBy field is required.' });
+        }
+        const jsonTotals = JSON.stringify(totals);
+
+        await connection.query(
+            'INSERT INTO app_config (config_key, config_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE config_value = ?',
+            ['licenseTotals', jsonTotals, jsonTotals]
+        );
+        
+        await logAudit(changedBy, 'UPDATE', 'CONFIG', null, 'Atualizado totais de licenças.', connection);
+        
+        await connection.commit();
+        res.json({ message: 'License totals updated successfully.' });
+    } catch (error) {
+        await connection.rollback();
+        handleApiError(res, error, 'save license totals');
+    } finally {
+        connection.release();
+    }
+});
+
 
 // --- USERS ROUTES ---
 app.get('/api/users', async (req, res) => {

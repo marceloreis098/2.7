@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { getLicenses, addLicense, updateLicense, deleteLicense, renameProduct } from '../services/apiService';
+import { getLicenses, addLicense, updateLicense, deleteLicense, renameProduct, getLicenseTotals, saveLicenseTotals } from '../services/apiService';
 import { License, User, UserRole } from '../types';
 import Icon from './common/Icon';
 
@@ -250,7 +250,7 @@ const LicenseFormModal: React.FC<{
 const EditableTotal: React.FC<{
     productName: string;
     value: number;
-    onSave: (productName: string, newValue: number) => void;
+    onSave: (productName: string, newValue: number) => Promise<void>;
     disabled: boolean;
 }> = ({ productName, value, onSave, disabled }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -268,10 +268,10 @@ const EditableTotal: React.FC<{
         }
     }, [isEditing]);
 
-    const handleSave = () => {
+    const handleSave = async () => {
         const newTotal = parseInt(String(draftValue), 10);
         if (!isNaN(newTotal) && newTotal >= 0) {
-            onSave(productName, newTotal);
+            await onSave(productName, newTotal);
         } else {
             setDraftValue(value); // revert on invalid input
         }
@@ -337,10 +337,15 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
 
     const isAdmin = currentUser.role === UserRole.Admin;
 
-    const handleSetTotalLicenseCount = (productName: string, total: number) => {
+    const handleSetTotalLicenseCount = async (productName: string, total: number) => {
         const newTotals = { ...totalLicenses, [productName]: total };
-        setTotalLicenses(newTotals);
-        localStorage.setItem('licenseTotals', JSON.stringify(newTotals));
+        try {
+            await saveLicenseTotals(newTotals, currentUser.username);
+            setTotalLicenses(newTotals);
+        } catch (error) {
+            console.error("Failed to save license totals:", error);
+            alert("Falha ao salvar o total de licenças. Tente novamente.");
+        }
     };
 
      const handleSaveProductNames = async (newProductNames: string[], renames: Record<string, string>) => {
@@ -352,6 +357,22 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             if (renamePromises.length > 0) {
                 await Promise.all(renamePromises);
                 alert('Nomes de produtos atualizados com sucesso.');
+
+                // After renaming products, also rename keys in the license totals object
+                const updatedTotals = { ...totalLicenses };
+                let totalsChanged = false;
+                Object.entries(renames).forEach(([oldName, newName]) => {
+                    if (updatedTotals[oldName] !== undefined) {
+                        updatedTotals[newName] = updatedTotals[oldName];
+                        delete updatedTotals[oldName];
+                        totalsChanged = true;
+                    }
+                });
+
+                if (totalsChanged) {
+                    await saveLicenseTotals(updatedTotals, currentUser.username);
+                    setTotalLicenses(updatedTotals);
+                }
             }
 
             const sortedNames = newProductNames.sort();
@@ -369,11 +390,12 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     const loadLicensesAndProducts = async () => {
         setLoading(true);
         try {
-            const data = await getLicenses();
+            const [data, savedTotals] = await Promise.all([
+                getLicenses(),
+                getLicenseTotals()
+            ]);
+            
             setLicenses(data);
-
-            const savedTotalsJSON = localStorage.getItem('licenseTotals');
-            const savedTotals = savedTotalsJSON ? JSON.parse(savedTotalsJSON) : {};
             setTotalLicenses(savedTotals);
 
             const savedProductNamesJSON = localStorage.getItem('productNames');
