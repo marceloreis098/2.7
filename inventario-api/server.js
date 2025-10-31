@@ -488,43 +488,17 @@ app.post('/api/licenses', async (req, res) => {
         await connection.beginTransaction();
         const { changedBy, userRole, ...licenseData } = req.body;
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
-        const dataToInsert = { ...licenseData, approval_status };
 
-        // Whitelist columns to prevent SQL injection and errors from unexpected fields
-        const allowedColumns = [
-            'produto', 'tipoLicenca', 'chaveSerial', 'dataExpiracao', 'usuario',
-            'cargo', 'setor', 'gestor', 'centroCusto', 'contaRazao',
-            'nomeComputador', 'numeroChamado', 'approval_status', 'observacoes'
-        ];
-
-        const columns = [];
-        const values = [];
-        const placeholders = [];
-
-        for (const col of allowedColumns) {
-            // Ensure the property exists and is not undefined to avoid inserting NULL for missing fields
-            if (dataToInsert[col] !== undefined) {
-                columns.push(`\`${col}\``); // Use backticks for safety
-                values.push(dataToInsert[col]);
-                placeholders.push('?');
-            }
-        }
-        
-        if (columns.length === 0) {
-            return res.status(400).json({ message: 'No valid data provided to insert.' });
-        }
-
-        const sql = `INSERT INTO licenses (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
-        const [result] = await connection.query(sql, values);
+        const [result] = await connection.query('INSERT INTO licenses SET ?', [{ ...licenseData, approval_status }]);
         const newId = result.insertId;
-        
+
         const auditDetails = approval_status === 'pending_approval'
-            ? `Solicitada criação de licença para ${dataToInsert.produto}`
-            : `Criada licença para ${dataToInsert.produto}`;
+            ? `Solicitada criação de licença para ${licenseData.produto}`
+            : `Criada licença para ${licenseData.produto}`;
         await logAudit(changedBy, 'CREATE', 'LICENSE', newId, auditDetails, connection);
 
         await connection.commit();
-        res.status(201).json({ id: newId, ...dataToInsert });
+        res.status(201).json({ id: newId, ...licenseData, approval_status });
     } catch (error) {
         await connection.rollback();
         handleApiError(res, error, 'add license');
@@ -532,7 +506,6 @@ app.post('/api/licenses', async (req, res) => {
         connection.release();
     }
 });
-
 
 app.put('/api/licenses/:id', async (req, res) => {
     const connection = await db.getConnection();
