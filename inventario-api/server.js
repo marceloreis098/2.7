@@ -121,7 +121,7 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
             id INT AUTO_INCREMENT PRIMARY KEY,
             produto VARCHAR(255) NOT NULL,
             tipoLicenca VARCHAR(255),
-            chaveSerial VARCHAR(255) NOT NULL,
+            chaveSerial VARCHAR(255) NOT NULL UNIQUE,
             dataExpiracao VARCHAR(255),
             usuario VARCHAR(255) NOT NULL,
             cargo VARCHAR(255),
@@ -382,6 +382,12 @@ app.post('/api/equipment', async (req, res) => {
     try {
         await connection.beginTransaction();
         const { changedBy, userRole, ...equipmentData } = req.body;
+        
+        // Server-side validation
+        if (!equipmentData.equipamento || equipmentData.equipamento.trim() === '') {
+            return res.status(400).json({ message: 'O campo "Equipamento" é obrigatório.' });
+        }
+
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
         const dataToInsert = { ...equipmentData, approval_status };
 
@@ -399,7 +405,12 @@ app.post('/api/equipment', async (req, res) => {
         for (const col of allowedColumns) {
             if (dataToInsert[col] !== undefined) {
                 columns.push(`\`${col}\``);
-                values.push(dataToInsert[col] === '' ? null : dataToInsert[col]);
+                let value = dataToInsert[col];
+                // Specific fix for patrimonio: convert '' to NULL to avoid UNIQUE constraint violation on nullable field
+                if (col === 'patrimonio' && value === '') {
+                    value = null;
+                }
+                values.push(value);
                 placeholders.push('?');
             }
         }
@@ -515,6 +526,12 @@ app.post('/api/licenses', async (req, res) => {
     try {
         await connection.beginTransaction();
         const { changedBy, userRole, ...licenseData } = req.body;
+
+        // Server-side validation for required fields
+        if (!licenseData.produto?.trim() || !licenseData.chaveSerial?.trim() || !licenseData.usuario?.trim()) {
+            return res.status(400).json({ message: "Produto, Chave Serial e Usuário são campos obrigatórios e não podem estar em branco." });
+        }
+
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
         const dataToInsert = { ...licenseData, approval_status };
 
@@ -531,7 +548,7 @@ app.post('/api/licenses', async (req, res) => {
         for (const col of allowedColumns) {
             if (dataToInsert[col] !== undefined) {
                 columns.push(`\`${col}\``);
-                values.push(dataToInsert[col] === '' ? null : dataToInsert[col]);
+                values.push(dataToInsert[col]); // Insert value as is
                 placeholders.push('?');
             }
         }
