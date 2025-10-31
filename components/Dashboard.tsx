@@ -1,39 +1,43 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { getEquipment, getLicenses } from '../services/apiService';
-import { Equipment, License, Page } from '../types';
+import { Equipment, License, Page, User, UserRole } from '../types';
 import Icon from './common/Icon';
+
+const ApprovalQueue = lazy(() => import('./ApprovalQueue'));
 
 interface DashboardProps {
     setActivePage: (page: Page) => void;
+    currentUser: User;
 }
 
 const PIE_COLORS = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6', '#1abc9c', '#d35400'];
 
-const Dashboard: React.FC<DashboardProps> = ({setActivePage}) => {
+const Dashboard: React.FC<DashboardProps> = ({setActivePage, currentUser}) => {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [equipmentData, licensesData] = await Promise.all([
+        getEquipment(currentUser),
+        getLicenses(currentUser),
+      ]);
+      setEquipment(equipmentData);
+      setLicenses(licensesData);
+    } catch (error) {
+      console.error("Failed to fetch dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [equipmentData, licensesData] = await Promise.all([
-          getEquipment(),
-          getLicenses(),
-        ]);
-        setEquipment(equipmentData);
-        setLicenses(licensesData);
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
-  }, []);
+  }, [currentUser]);
 
   const isDarkMode = document.documentElement.classList.contains('dark');
   const textColor = isDarkMode ? '#edf2f7' : '#333';
@@ -93,12 +97,17 @@ const Dashboard: React.FC<DashboardProps> = ({setActivePage}) => {
   }
 
   return (
-    <div>
-      <h2 className="text-3xl font-bold text-brand-dark dark:text-dark-text-primary mb-6">Dashboard</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <div className="space-y-6">
+       {currentUser.role === UserRole.Admin && (
+          <Suspense fallback={<div>Carregando...</div>}>
+            <ApprovalQueue currentUser={currentUser} onAction={fetchData} />
+          </Suspense>
+       )}
+      <h2 className="text-3xl font-bold text-brand-dark dark:text-dark-text-primary">Dashboard</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard icon="Computer" title="Total de Itens" value={totalEquipment} color="bg-blue-500" onClick={() => setActivePage('Inventário de Equipamentos')} />
-        <StatCard icon="Play" title="Em Uso" value={statusCounts['Em Uso'] || 0} color="bg-status-active"/>
-        <StatCard icon="Archive" title="Estoque" value={statusCounts['Estoque'] || 0} color="bg-yellow-500" />
+        <StatCard icon="Play" title="Em Uso" value={statusCounts['EM USO'] || 0} color="bg-status-active"/>
+        <StatCard icon="Archive" title="Estoque" value={statusCounts['ESTOQUE'] || 0} color="bg-yellow-500" />
         <StatCard icon="Timer" title="Licenças Expirando" value={expiringLicenses} color="bg-red-500" onClick={() => setActivePage('Controle de Licenças')} />
       </div>
 

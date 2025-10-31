@@ -237,7 +237,7 @@ const App: React.FC = () => {
   const renderActivePage = () => {
     switch (activePage) {
       case 'Dashboard':
-        return <Dashboard setActivePage={setActivePage} />;
+        return <Dashboard setActivePage={setActivePage} currentUser={currentUser} />;
       case 'Inventário de Equipamentos':
         return <EquipmentList currentUser={currentUser} companyName={companyName} />;
       case 'Inventário Absolute':
@@ -269,7 +269,7 @@ const App: React.FC = () => {
         }
         return null;
       default:
-        return <Dashboard setActivePage={setActivePage} />;
+        return <Dashboard setActivePage={setActivePage} currentUser={currentUser} />;
     }
   };
 

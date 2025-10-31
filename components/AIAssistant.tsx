@@ -16,7 +16,8 @@ const AIAssistant: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         const loadInventory = async () => {
             setIsDataLoading(true);
             try {
-                const data = await getEquipment();
+                // FIX: Pass the currentUser object to the getEquipment function as required.
+                const data = await getEquipment(currentUser);
                 setInventoryData(data);
             } catch (error) {
                 console.error("Failed to load inventory for AI assistant", error);
@@ -26,7 +27,7 @@ const AIAssistant: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             }
         };
         loadInventory();
-    }, []);
+    }, [currentUser]);
 
 
     const handleGenerateReport = async () => {

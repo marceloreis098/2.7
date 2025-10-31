@@ -43,6 +43,7 @@ export interface Equipment {
   termoResponsabilidade: string;
   foto: string;
   qrCode: string;
+  approval_status?: 'pending_approval' | 'approved' | 'rejected';
 }
 
 
@@ -70,6 +71,7 @@ export interface License {
     contaRazao?: string;
     nomeComputador?: string;
     numeroChamado?: string;
+    approval_status?: 'pending_approval' | 'approved' | 'rejected';
 }
 
 export type Page = 'Dashboard' | 'Inventário de Equipamentos' | 'Inventário Absolute' | 'Controle de Licenças' | 'Usuários e Permissões' | 'Configurações' | 'Auditoria';
@@ -85,7 +87,7 @@ export interface AuditLogEntry {
   id: number;
   username: string;
   action_type: 'CREATE' | 'UPDATE' | 'DELETE';
-  target_type: 'EQUIPMENT' | 'LICENSE' | 'USER';
+  target_type: 'EQUIPMENT' | 'LICENSE' | 'USER' | 'INTEGRATION' | 'CONFIG';
   target_id: number | null;
   details: string;
   timestamp: string;

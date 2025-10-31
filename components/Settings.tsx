@@ -184,7 +184,8 @@ const Settings: React.FC<SettingsProps> = ({ currentUser, onSave, currentSetting
             const fetchLicensesAndProducts = async () => {
                 setLoadingLicenses(true);
                 try {
-                    const licensesData = await getLicenses();
+                    // FIX: Pass the currentUser object to the getLicenses function as required.
+                    const licensesData = await getLicenses(currentUser);
                     setAllLicenses(licensesData);
 
                     // Unify product list from DB and localStorage for consistency
@@ -218,7 +219,7 @@ const Settings: React.FC<SettingsProps> = ({ currentUser, onSave, currentSetting
             fetchStatus();
             fetchLicensesAndProducts();
         }
-    }, [currentUser.role]);
+    }, [currentUser]);
 
 
     const handleGenerateSecret = async () => {

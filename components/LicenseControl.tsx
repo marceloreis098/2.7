@@ -143,7 +143,7 @@ const LicenseFormModal: React.FC<{
     onSave: () => void;
     currentUser: User;
 }> = ({ license, productNames, onClose, onSave, currentUser }) => {
-    const [formData, setFormData] = useState<Omit<License, 'id'>>({
+    const [formData, setFormData] = useState<Omit<License, 'id' | 'approval_status'>>({
         produto: '',
         tipoLicenca: '',
         chaveSerial: '',
@@ -191,7 +191,10 @@ const LicenseFormModal: React.FC<{
             if (license) {
                 await updateLicense({ ...formData, id: license.id }, currentUser.username);
             } else {
-                await addLicense(formData, currentUser.username);
+                await addLicense(formData, currentUser);
+            }
+             if (currentUser.role !== UserRole.Admin && !license) {
+                alert("Licença adicionada com sucesso! Sua solicitação foi enviada para aprovação do administrador.");
             }
             onSave();
             onClose();
@@ -391,7 +394,7 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         setLoading(true);
         try {
             const [data, savedTotals] = await Promise.all([
-                getLicenses(),
+                getLicenses(currentUser),
                 getLicenseTotals()
             ]);
             
@@ -423,13 +426,9 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
 
     useEffect(() => {
         loadLicensesAndProducts();
-    }, []);
+    }, [currentUser]);
 
     const handleOpenModal = (license: License | null = null) => {
-        if (license && !isAdmin) {
-            console.warn('User does not have permission to edit licenses.');
-            return;
-        }
         setEditingLicense(license);
         setIsModalOpen(true);
     };
@@ -591,6 +590,7 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                         const usedCount = licensesInGroup.length;
                         const totalCount = totalLicenses[productName] || 0;
                         const availableCount = totalCount - usedCount;
+                        const pendingCount = isAdmin ? licensesInGroup.filter(l => l.approval_status === 'pending_approval').length : 0;
                         
                         return (
                             <div key={productName} className="border dark:border-dark-border rounded-lg overflow-hidden transition-all duration-300 animate-fade-in-up">
@@ -603,6 +603,9 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                                     <div className="flex items-center gap-3">
                                         <Icon name="Layers" size={24} className="text-brand-secondary dark:text-dark-text-secondary" />
                                         <h3 className="font-bold text-lg text-brand-dark dark:text-dark-text-primary">{productName}</h3>
+                                         {pendingCount > 0 && (
+                                            <span className="text-xs font-semibold bg-yellow-200 text-yellow-800 px-2.5 py-0.5 rounded-full">{pendingCount} Pendente(s)</span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-6">
                                         <div className="hidden lg:flex items-center gap-4 text-sm font-medium">
@@ -631,20 +634,16 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                                                     <th scope="col" className="px-6 py-3">Usuário</th>
                                                     <th scope="col" className="px-6 py-3">Chave/Serial</th>
                                                     <th scope="col" className="px-6 py-3">Centro de Custo</th>
-                                                    <th scope="col" className="px-6 py-3">Conta Razão</th>
-                                                    <th scope="col" className="px-6 py-3">Nº Chamado</th>
                                                     <th scope="col" className="px-6 py-3">Expiração</th>
                                                     {isAdmin && <th scope="col" className="px-6 py-3 text-right">Ações</th>}
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {licensesInGroup.map(license => (
-                                                    <tr key={license.id} className="bg-white dark:bg-dark-card border-b dark:border-dark-border last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                                    <tr key={license.id} className={`border-b dark:border-dark-border last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 ${license.approval_status === 'pending_approval' ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-white dark:bg-dark-card'}`}>
                                                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-dark-text-primary">{license.usuario}</td>
                                                         <td className="px-6 py-4 font-mono text-xs">{license.chaveSerial}</td>
                                                         <td className="px-6 py-4">{license.centroCusto || 'N/A'}</td>
-                                                        <td className="px-6 py-4">{license.contaRazao || 'N/A'}</td>
-                                                        <td className="px-6 py-4">{license.numeroChamado || 'N/A'}</td>
                                                         <td className="px-6 py-4">
                                                             <ExpirationStatus dateStr={license.dataExpiracao}/>
                                                         </td>

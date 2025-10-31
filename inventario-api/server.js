@@ -96,7 +96,8 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
             notaPlKm VARCHAR(255),
             termoResponsabilidade TEXT,
             foto TEXT,
-            qrCode TEXT
+            qrCode TEXT,
+            approval_status VARCHAR(20) NOT NULL DEFAULT 'approved'
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `;
 
@@ -127,7 +128,8 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
             centroCusto VARCHAR(255),
             contaRazao VARCHAR(255),
             nomeComputador VARCHAR(255),
-            numeroChamado VARCHAR(255)
+            numeroChamado VARCHAR(255),
+            approval_status VARCHAR(20) NOT NULL DEFAULT 'approved'
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `;
 
@@ -230,6 +232,17 @@ const initializeDatabase = async () => {
                     ADD COLUMN numeroChamado VARCHAR(255);
                 `);
                 console.log("Migration successful: Added new columns to licenses table.");
+            }
+             // Migration for approval status
+            const [equipmentApprovalCol] = await migrationConnection.query("SHOW COLUMNS FROM `equipment` LIKE 'approval_status'");
+            if (equipmentApprovalCol.length === 0) {
+                console.log("Adding 'approval_status' to equipment table...");
+                await migrationConnection.query("ALTER TABLE `equipment` ADD COLUMN `approval_status` VARCHAR(20) NOT NULL DEFAULT 'approved';");
+            }
+            const [licenseApprovalCol] = await migrationConnection.query("SHOW COLUMNS FROM `licenses` LIKE 'approval_status'");
+            if (licenseApprovalCol.length === 0) {
+                console.log("Adding 'approval_status' to licenses table...");
+                await migrationConnection.query("ALTER TABLE `licenses` ADD COLUMN `approval_status` VARCHAR(20) NOT NULL DEFAULT 'approved';");
             }
         } finally {
             migrationConnection.release();
@@ -344,7 +357,12 @@ app.post('/api/auth/2fa/disable', async (req, res) => {
 // --- EQUIPMENT ROUTES ---
 app.get('/api/equipment', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM equipment');
+        const { role } = req.query;
+        let query = 'SELECT * FROM equipment';
+        if (role && role !== 'Admin') {
+            query += " WHERE approval_status = 'approved'";
+        }
+        const [rows] = await db.query(query);
         res.json(rows);
     } catch (error) {
         handleApiError(res, error, 'get equipment');
@@ -364,12 +382,20 @@ app.post('/api/equipment', async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        const { changedBy, ...equipmentData } = req.body;
-        const [result] = await connection.query('INSERT INTO equipment SET ?', [equipmentData]);
+        const { changedBy, userRole, ...equipmentData } = req.body;
+        const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
+
+        const [result] = await connection.query('INSERT INTO equipment SET ?', [{ ...equipmentData, approval_status }]);
         const newId = result.insertId;
-        await logAudit(changedBy, 'CREATE', 'EQUIPMENT', newId, `Criado equipamento: ${equipmentData.equipamento}`, connection);
+
+        const auditDetails = approval_status === 'pending_approval'
+            ? `Solicitada criação de equipamento: ${equipmentData.equipamento}`
+            : `Criado equipamento: ${equipmentData.equipamento}`;
+        
+        await logAudit(changedBy, 'CREATE', 'EQUIPMENT', newId, auditDetails, connection);
+        
         await connection.commit();
-        res.status(201).json({ id: newId, ...equipmentData });
+        res.status(201).json({ id: newId, ...equipmentData, approval_status });
     } catch (error) {
         await connection.rollback();
         handleApiError(res, error, 'add equipment');
@@ -451,7 +477,12 @@ app.post('/api/equipment/import', async (req, res) => {
 // --- LICENSE ROUTES ---
 app.get('/api/licenses', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM licenses');
+        const { role } = req.query;
+        let query = 'SELECT * FROM licenses';
+        if (role && role !== 'Admin') {
+            query += " WHERE approval_status = 'approved'";
+        }
+        const [rows] = await db.query(query);
         res.json(rows);
     } catch (error) {
         handleApiError(res, error, 'get licenses');
@@ -462,12 +493,19 @@ app.post('/api/licenses', async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        const { changedBy, ...licenseData } = req.body;
-        const [result] = await connection.query('INSERT INTO licenses SET ?', [licenseData]);
+        const { changedBy, userRole, ...licenseData } = req.body;
+        const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
+
+        const [result] = await connection.query('INSERT INTO licenses SET ?', [{ ...licenseData, approval_status }]);
         const newId = result.insertId;
-        await logAudit(changedBy, 'CREATE', 'LICENSE', newId, `Criada licença para ${licenseData.produto}`, connection);
+
+        const auditDetails = approval_status === 'pending_approval'
+            ? `Solicitada criação de licença para ${licenseData.produto}`
+            : `Criada licença para ${licenseData.produto}`;
+        await logAudit(changedBy, 'CREATE', 'LICENSE', newId, auditDetails, connection);
+
         await connection.commit();
-        res.status(201).json({ id: newId, ...licenseData });
+        res.status(201).json({ id: newId, ...licenseData, approval_status });
     } catch (error) {
         await connection.rollback();
         handleApiError(res, error, 'add license');
@@ -700,6 +738,60 @@ app.post('/api/users/:id/disable-2fa', async (req, res) => {
         connection.release();
     }
 });
+
+// --- APPROVALS ---
+app.get('/api/approvals', async (req, res) => {
+    try {
+        const [equipment] = await db.query("SELECT id, equipamento as name, 'equipment' as type FROM equipment WHERE approval_status = 'pending_approval'");
+        const [licenses] = await db.query("SELECT id, produto as name, 'license' as type FROM licenses WHERE approval_status = 'pending_approval'");
+        res.json([...equipment, ...licenses]);
+    } catch (error) {
+        handleApiError(res, error, 'get pending approvals');
+    }
+});
+
+app.post('/api/approvals/approve', async (req, res) => {
+    const { type, id, changedBy } = req.body;
+    if (!['equipment', 'license'].includes(type)) {
+        return res.status(400).json({ message: 'Invalid item type' });
+    }
+    const tableName = type === 'equipment' ? 'equipment' : 'licenses';
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        await connection.query(`UPDATE ${tableName} SET approval_status = 'approved' WHERE id = ?`, [id]);
+        await logAudit(changedBy, 'UPDATE', type.toUpperCase(), id, 'Aprovada a criação do item.', connection);
+        await connection.commit();
+        res.json({ message: 'Item approved successfully.' });
+    } catch (error) {
+        await connection.rollback();
+        handleApiError(res, error, 'approve item');
+    } finally {
+        connection.release();
+    }
+});
+
+app.post('/api/approvals/reject', async (req, res) => {
+    const { type, id, changedBy } = req.body;
+    if (!['equipment', 'license'].includes(type)) {
+        return res.status(400).json({ message: 'Invalid item type' });
+    }
+    const tableName = type === 'equipment' ? 'equipment' : 'licenses';
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        await connection.query(`DELETE FROM ${tableName} WHERE id = ?`, [id]);
+        await logAudit(changedBy, 'DELETE', type.toUpperCase(), id, 'Rejeitada a criação do item (item excluído).', connection);
+        await connection.commit();
+        res.json({ message: 'Item rejected and deleted successfully.' });
+    } catch (error) {
+        await connection.rollback();
+        handleApiError(res, error, 'reject item');
+    } finally {
+        connection.release();
+    }
+});
+
 
 // --- DATABASE MANAGEMENT ---
 app.get('/api/database/status', async(req, res) => {

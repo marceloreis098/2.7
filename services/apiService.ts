@@ -65,8 +65,8 @@ export const disable2FA = async (userId: number): Promise<User> => {
 
 
 // Equipment
-export const getEquipment = async (): Promise<Equipment[]> => {
-    const response = await fetch(`${API_BASE_URL}/equipment`);
+export const getEquipment = async (currentUser: User): Promise<Equipment[]> => {
+    const response = await fetch(`${API_BASE_URL}/equipment?role=${currentUser.role}`);
     return handleResponse(response);
 };
 
@@ -75,11 +75,11 @@ export const getEquipmentHistory = async (equipmentId: number): Promise<Equipmen
     return handleResponse(response);
 };
 
-export const addEquipment = async (equipmentData: Omit<Equipment, 'id'>, addedBy: string): Promise<Equipment> => {
+export const addEquipment = async (equipmentData: Omit<Equipment, 'id'>, currentUser: User): Promise<Equipment> => {
     const response = await fetch(`${API_BASE_URL}/equipment`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ ...equipmentData, changedBy: addedBy }),
+        body: JSON.stringify({ ...equipmentData, changedBy: currentUser.username, userRole: currentUser.role }),
     });
     return handleResponse(response);
 };
@@ -119,16 +119,16 @@ export const clearAllEquipment = async (): Promise<{ message: string }> => {
 };
 
 // Licenses
-export const getLicenses = async (): Promise<License[]> => {
-    const response = await fetch(`${API_BASE_URL}/licenses`);
+export const getLicenses = async (currentUser: User): Promise<License[]> => {
+    const response = await fetch(`${API_BASE_URL}/licenses?role=${currentUser.role}`);
     return handleResponse(response);
 };
 
-export const addLicense = async (licenseData: Omit<License, 'id'>, addedBy: string): Promise<License> => {
+export const addLicense = async (licenseData: Omit<License, 'id'>, currentUser: User): Promise<License> => {
     const response = await fetch(`${API_BASE_URL}/licenses`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ ...licenseData, changedBy: addedBy }),
+        body: JSON.stringify({ ...licenseData, changedBy: currentUser.username, userRole: currentUser.role }),
     });
     return handleResponse(response);
 };
@@ -298,6 +298,30 @@ export const saveAbsoluteConfig = async (credentials: { tokenId: string, secretK
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(credentials),
+    });
+    return handleResponse(response);
+};
+
+// Approvals
+export const getPendingApprovals = async (): Promise<{id: number, name: string, type: 'equipment' | 'license'}[]> => {
+    const response = await fetch(`${API_BASE_URL}/approvals`);
+    return handleResponse(response);
+};
+
+export const approveItem = async (type: 'equipment' | 'license', id: number, changedBy: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/approvals/approve`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ type, id, changedBy }),
+    });
+    return handleResponse(response);
+};
+
+export const rejectItem = async (type: 'equipment' | 'license', id: number, changedBy: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/approvals/reject`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ type, id, changedBy }),
     });
     return handleResponse(response);
 };

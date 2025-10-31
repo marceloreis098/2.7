@@ -11,7 +11,7 @@ const EquipmentFormModal: React.FC<{
     onSave: () => void;
     currentUser: User;
 }> = ({ equipment, onClose, onSave, currentUser }) => {
-    const [formData, setFormData] = useState<Omit<Equipment, 'id' | 'qrCode'>>({
+    const [formData, setFormData] = useState<Omit<Equipment, 'id' | 'qrCode' | 'approval_status'>>({
         equipamento: '', garantia: '', patrimonio: '', serial: '', usuarioAtual: '', usuarioAnterior: '',
         local: '', setor: '', dataEntregaUsuario: '', status: '', dataDevolucao: '', tipo: '',
         notaCompra: '', notaPlKm: '', termoResponsabilidade: '', foto: 'https://picsum.photos/seed/new-item/200/150'
@@ -22,7 +22,7 @@ const EquipmentFormModal: React.FC<{
     useEffect(() => {
         if (equipment) {
             // Pre-fill form data ensuring all keys are present with empty strings for null/undefined values
-            const initialData: Omit<Equipment, 'id' | 'qrCode'> = {
+            const initialData: Omit<Equipment, 'id' | 'qrCode' | 'approval_status'> = {
                 equipamento: equipment.equipamento || '',
                 garantia: equipment.garantia || '',
                 patrimonio: equipment.patrimonio || '',
@@ -62,8 +62,13 @@ const EquipmentFormModal: React.FC<{
             if (equipment) {
                 await updateEquipment({ ...dataToSave, id: equipment.id }, currentUser.username);
             } else {
-                await addEquipment(dataToSave, currentUser.username);
+                await addEquipment(dataToSave, currentUser);
             }
+
+            if (currentUser.role !== UserRole.Admin && !equipment) {
+                alert("Equipamento adicionado com sucesso! Sua solicitação foi enviada para aprovação do administrador.");
+            }
+
             onSave();
             onClose();
         } catch (error: any) {
@@ -101,7 +106,7 @@ const EquipmentFormModal: React.FC<{
         return dateString;
     };
 
-    const formFields: (keyof Omit<Equipment, 'id' | 'foto' | 'qrCode'>)[] = [
+    const formFields: (keyof Omit<Equipment, 'id' | 'foto' | 'qrCode' | 'approval_status'>)[] = [
         'equipamento', 'patrimonio', 'serial', 'usuarioAtual', 'usuarioAnterior', 'local',
         'setor', 'status', 'tipo', 'garantia', 'dataEntregaUsuario', 'dataDevolucao',
         'notaCompra', 'notaPlKm', 'termoResponsabilidade'
@@ -283,13 +288,13 @@ const EquipmentDetailsModal: React.FC<{ equipment: Equipment; onClose: () => voi
     );
 };
 
-const EquipmentCard: React.FC<{item: Equipment; onDetailsClick: () => void;}> = ({item, onDetailsClick}) => (
+const EquipmentCard: React.FC<{item: Equipment; onDetailsClick: () => void; currentUser: User}> = ({item, onDetailsClick, currentUser}) => (
     <div className="bg-gray-50 dark:bg-dark-bg rounded-lg shadow p-4 space-y-3 border dark:border-dark-border">
         <div className="font-bold text-brand-secondary dark:text-dark-text-primary pr-2">{item.equipamento}</div>
         <div className="text-sm text-gray-600 dark:text-dark-text-secondary space-y-1">
             <p><strong>Patrimônio:</strong> <span className="text-brand-primary font-semibold">{item.patrimonio || 'N/A'}</span></p>
             <p><strong>Usuário Atual:</strong> {item.usuarioAtual || 'N/A'}</p>
-            <p><strong>Status:</strong> {item.status}</p>
+            <p><strong>Status:</strong> {item.status} {item.approval_status === 'pending_approval' && currentUser.role === UserRole.Admin && <span className="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">Pendente</span>}</p>
         </div>
         <div className="pt-2">
             <button onClick={onDetailsClick} className="text-brand-primary hover:underline text-sm font-semibold w-full text-right">
@@ -316,7 +321,7 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
     const loadEquipment = async () => {
         setLoading(true);
         try {
-            const data = await getEquipment();
+            const data = await getEquipment(currentUser);
             setAllEquipment(data);
         } catch (error) {
             console.error("Failed to load equipment", error);
@@ -327,7 +332,7 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
 
     useEffect(() => {
         loadEquipment();
-    }, []);
+    }, [currentUser]);
     
     const handleExport = () => {
         const header = [
@@ -483,7 +488,7 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
                     {/* Mobile/Tablet View */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
                         {filteredEquipment.map(item => (
-                            <EquipmentCard key={item.id} item={item} onDetailsClick={() => setSelectedEquipment(item)} />
+                            <EquipmentCard key={item.id} item={item} onDetailsClick={() => setSelectedEquipment(item)} currentUser={currentUser} />
                         ))}
                     </div>
 
@@ -507,7 +512,7 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
                                         <td className="px-6 py-4 text-brand-primary font-semibold">{item.patrimonio || 'N/A'}</td>
                                         <td className="px-6 py-4">{item.usuarioAtual || 'N/A'}</td>
                                         <td className="px-6 py-4">{item.local || 'N/A'}</td>
-                                        <td className="px-6 py-4">{item.status || 'N/A'}</td>
+                                        <td className="px-6 py-4">{item.status || 'N/A'} {item.approval_status === 'pending_approval' && currentUser.role === UserRole.Admin && <span className="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">Pendente</span>}</td>
                                         <td className="px-6 py-4">
                                             <button data-testid="details-button" onClick={() => setSelectedEquipment(item)} className="text-brand-primary hover:underline">
                                                 Detalhes
