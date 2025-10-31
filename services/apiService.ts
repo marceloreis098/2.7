@@ -317,11 +317,11 @@ export const approveItem = async (type: 'equipment' | 'license', id: number, cha
     return handleResponse(response);
 };
 
-export const rejectItem = async (type: 'equipment' | 'license', id: number, changedBy: string): Promise<{ message: string }> => {
+export const rejectItem = async (type: 'equipment' | 'license', id: number, changedBy: string, rejectionReason: string): Promise<{ message: string }> => {
     const response = await fetch(`${API_BASE_URL}/approvals/reject`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ type, id, changedBy }),
+        body: JSON.stringify({ type, id, changedBy, rejectionReason }),
     });
     return handleResponse(response);
 };

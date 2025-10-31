@@ -5,24 +5,44 @@ import { QRCodeCanvas as QRCode } from 'qrcode.react';
 import { getEquipment, getEquipmentHistory, addEquipment, updateEquipment, deleteEquipment, syncWithAbsolute } from '../services/apiService';
 import TermoResponsabilidade from './TermoResponsabilidade';
 
+const StatusBadge: React.FC<{ status: Equipment['approval_status'], reason?: string }> = ({ status, reason }) => {
+    if (!status || status === 'approved') return null;
+
+    const baseClasses = "ml-2 text-xs font-semibold px-2 py-0.5 rounded-full";
+    const statusMap = {
+        pending_approval: { text: 'Pendente', className: 'bg-yellow-200 text-yellow-800' },
+        rejected: { text: 'Rejeitado', className: 'bg-red-200 text-red-800' },
+    };
+
+    const currentStatus = statusMap[status];
+    if (!currentStatus) return null;
+
+    return (
+        <span className={`${baseClasses} ${currentStatus.className}`} title={reason || undefined}>
+            {currentStatus.text}
+        </span>
+    );
+};
+
+
 const EquipmentFormModal: React.FC<{
     equipment?: Equipment | null;
     onClose: () => void;
     onSave: () => void;
     currentUser: User;
 }> = ({ equipment, onClose, onSave, currentUser }) => {
-    const [formData, setFormData] = useState<Omit<Equipment, 'id' | 'qrCode' | 'approval_status'>>({
+    const [formData, setFormData] = useState<Omit<Equipment, 'id' | 'qrCode' | 'approval_status' | 'rejection_reason'>>({
         equipamento: '', garantia: '', patrimonio: '', serial: '', usuarioAtual: '', usuarioAnterior: '',
         local: '', setor: '', dataEntregaUsuario: '', status: '', dataDevolucao: '', tipo: '',
-        notaCompra: '', notaPlKm: '', termoResponsabilidade: '', foto: 'https://picsum.photos/seed/new-item/200/150'
+        notaCompra: '', notaPlKm: '', termoResponsabilidade: '', foto: 'https://picsum.photos/seed/new-item/200/150',
+        observacoes: ''
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState('');
 
     useEffect(() => {
         if (equipment) {
-            // Pre-fill form data ensuring all keys are present with empty strings for null/undefined values
-            const initialData: Omit<Equipment, 'id' | 'qrCode' | 'approval_status'> = {
+            const initialData: Omit<Equipment, 'id' | 'qrCode' | 'approval_status' | 'rejection_reason'> = {
                 equipamento: equipment.equipamento || '',
                 garantia: equipment.garantia || '',
                 patrimonio: equipment.patrimonio || '',
@@ -38,13 +58,14 @@ const EquipmentFormModal: React.FC<{
                 notaCompra: equipment.notaCompra || '',
                 notaPlKm: equipment.notaPlKm || '',
                 termoResponsabilidade: equipment.termoResponsabilidade || '',
-                foto: equipment.foto || 'https://picsum.photos/seed/new-item/200/150'
+                foto: equipment.foto || 'https://picsum.photos/seed/new-item/200/150',
+                observacoes: equipment.observacoes || ''
             };
             setFormData(initialData);
         }
     }, [equipment]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
@@ -56,7 +77,7 @@ const EquipmentFormModal: React.FC<{
         try {
             const dataToSave = {
                 ...formData,
-                qrCode: formData.patrimonio || formData.serial // QR code based on patrimonio or serial
+                qrCode: formData.patrimonio || formData.serial
             };
 
             if (equipment) {
@@ -79,34 +100,21 @@ const EquipmentFormModal: React.FC<{
         }
     };
     
-    // FIX: Add a robust date parsing function to handle different formats and convert to yyyy-MM-dd
     const formatDateForInput = (dateString: string): string => {
         if (!dateString || typeof dateString !== 'string') return '';
-        
-        // If already in the correct format, return it
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-            return dateString;
-        }
-
-        // Match formats like dd/MM/yyyy, dd-MM-yyyy, dd.MM.yy
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return dateString;
         const parts = dateString.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/);
         if (parts) {
             const day = parts[1].padStart(2, '0');
             const month = parts[2].padStart(2, '0');
             let year = parts[3];
-            
-            if (year.length === 2) {
-                year = `20${year}`;
-            }
-            
+            if (year.length === 2) year = `20${year}`;
             return `${year}-${month}-${day}`;
         }
-        
-        // Return original string if format is not recognized
         return dateString;
     };
 
-    const formFields: (keyof Omit<Equipment, 'id' | 'foto' | 'qrCode' | 'approval_status'>)[] = [
+    const formFields: (keyof Omit<Equipment, 'id' | 'foto' | 'qrCode' | 'approval_status' | 'rejection_reason' | 'observacoes'>)[] = [
         'equipamento', 'patrimonio', 'serial', 'usuarioAtual', 'usuarioAnterior', 'local',
         'setor', 'status', 'tipo', 'garantia', 'dataEntregaUsuario', 'dataDevolucao',
         'notaCompra', 'notaPlKm', 'termoResponsabilidade'
@@ -119,7 +127,6 @@ const EquipmentFormModal: React.FC<{
         dataDevolucao: 'Data de Devolução', notaCompra: 'Nota de Compra', notaPlKm: 'Nota / PL K&M',
         termoResponsabilidade: 'Termo de Responsabilidade'
     };
-
 
     return (
          <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start sm:items-center z-50 p-4 overflow-y-auto">
@@ -156,6 +163,17 @@ const EquipmentFormModal: React.FC<{
                             </div>
                          )
                     })}
+                    <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Observações</label>
+                        <textarea
+                            name="observacoes"
+                            value={formData.observacoes}
+                            onChange={handleChange}
+                            rows={3}
+                            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-dark-border rounded-md"
+                            placeholder="Adicione qualquer informação relevante sobre a solicitação ou o equipamento..."
+                        ></textarea>
+                    </div>
                 </div>
                 <div className="p-4 bg-gray-50 dark:bg-dark-card/50 border-t dark:border-dark-border flex justify-end gap-3 flex-shrink-0">
                      <button type="button" onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Cancelar</button>
@@ -212,7 +230,10 @@ const EquipmentDetailsModal: React.FC<{ equipment: Equipment; onClose: () => voi
         <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
             <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <div className="p-6 border-b dark:border-dark-border flex justify-between items-center flex-shrink-0">
-                    <h3 className="text-2xl font-bold text-brand-dark dark:text-dark-text-primary">{equipment.equipamento} ({identifier})</h3>
+                    <h3 className="text-2xl font-bold text-brand-dark dark:text-dark-text-primary flex items-center gap-3">
+                        {equipment.equipamento} ({identifier})
+                        <StatusBadge status={equipment.approval_status} reason={equipment.rejection_reason} />
+                    </h3>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"><Icon name="X" size={24} /></button>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-y-auto">
@@ -231,6 +252,19 @@ const EquipmentDetailsModal: React.FC<{ equipment: Equipment; onClose: () => voi
                                 <p key={d.label}><strong>{d.label}:</strong> {d.value}</p>
                            ) : null)}
                         </div>
+
+                        {equipment.observacoes && (
+                            <div className="mt-4">
+                                <h4 className="text-lg font-semibold mb-2">Observações da Criação</h4>
+                                <p className="text-sm p-3 bg-gray-100 dark:bg-dark-bg rounded-md border dark:border-dark-border">{equipment.observacoes}</p>
+                            </div>
+                        )}
+                        {equipment.rejection_reason && (
+                            <div className="mt-4">
+                                <h4 className="text-lg font-semibold mb-2 text-red-600">Motivo da Rejeição</h4>
+                                <p className="text-sm p-3 bg-red-50 dark:bg-red-900/20 rounded-md border border-red-200 dark:border-red-800">{equipment.rejection_reason}</p>
+                            </div>
+                        )}
 
                          <h4 className="text-lg font-semibold mt-6 mb-3 border-b dark:border-dark-border pb-2">Histórico</h4>
                          <div className="max-h-40 overflow-y-auto">
@@ -288,13 +322,16 @@ const EquipmentDetailsModal: React.FC<{ equipment: Equipment; onClose: () => voi
     );
 };
 
-const EquipmentCard: React.FC<{item: Equipment; onDetailsClick: () => void; currentUser: User}> = ({item, onDetailsClick, currentUser}) => (
+const EquipmentCard: React.FC<{item: Equipment; onDetailsClick: () => void;}> = ({item, onDetailsClick}) => (
     <div className="bg-gray-50 dark:bg-dark-bg rounded-lg shadow p-4 space-y-3 border dark:border-dark-border">
-        <div className="font-bold text-brand-secondary dark:text-dark-text-primary pr-2">{item.equipamento}</div>
+        <div className="font-bold text-brand-secondary dark:text-dark-text-primary pr-2 flex items-center justify-between">
+            {item.equipamento}
+            <StatusBadge status={item.approval_status} reason={item.rejection_reason} />
+        </div>
         <div className="text-sm text-gray-600 dark:text-dark-text-secondary space-y-1">
             <p><strong>Patrimônio:</strong> <span className="text-brand-primary font-semibold">{item.patrimonio || 'N/A'}</span></p>
             <p><strong>Usuário Atual:</strong> {item.usuarioAtual || 'N/A'}</p>
-            <p><strong>Status:</strong> {item.status} {item.approval_status === 'pending_approval' && currentUser.role === UserRole.Admin && <span className="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">Pendente</span>}</p>
+            <p><strong>Status:</strong> {item.status}</p>
         </div>
         <div className="pt-2">
             <button onClick={onDetailsClick} className="text-brand-primary hover:underline text-sm font-semibold w-full text-right">
@@ -415,7 +452,6 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
     };
 
     const filteredEquipment = useMemo(() => {
-        // FIX: Add null checks to prevent crashes when searching on items with empty fields.
         return allEquipment.filter(item => {
             const searchTermLower = searchTerm.toLowerCase();
             return (
@@ -485,14 +521,12 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
                 </div>
             ) : (
                 <>
-                    {/* Mobile/Tablet View */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
                         {filteredEquipment.map(item => (
-                            <EquipmentCard key={item.id} item={item} onDetailsClick={() => setSelectedEquipment(item)} currentUser={currentUser} />
+                            <EquipmentCard key={item.id} item={item} onDetailsClick={() => setSelectedEquipment(item)} />
                         ))}
                     </div>
 
-                    {/* Desktop View */}
                     <div className="overflow-x-auto hidden lg:block">
                         <table className="w-full text-sm text-left text-gray-700 dark:text-dark-text-secondary">
                             <thead className="text-xs text-gray-800 dark:text-dark-text-primary uppercase bg-gray-100 dark:bg-gray-900/50">
@@ -500,7 +534,6 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
                                     <th scope="col" className="px-6 py-3">Equipamento</th>
                                     <th scope="col" className="px-6 py-3">Patrimônio</th>
                                     <th scope="col" className="px-6 py-3">Usuário Atual</th>
-                                    <th scope="col" className="px-6 py-3">Local</th>
                                     <th scope="col" className="px-6 py-3">Status</th>
                                     <th scope="col" className="px-6 py-3">Ações</th>
                                 </tr>
@@ -511,8 +544,10 @@ const EquipmentList: React.FC<{ currentUser: User; companyName: string; }> = ({ 
                                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-dark-text-primary">{item.equipamento}</td>
                                         <td className="px-6 py-4 text-brand-primary font-semibold">{item.patrimonio || 'N/A'}</td>
                                         <td className="px-6 py-4">{item.usuarioAtual || 'N/A'}</td>
-                                        <td className="px-6 py-4">{item.local || 'N/A'}</td>
-                                        <td className="px-6 py-4">{item.status || 'N/A'} {item.approval_status === 'pending_approval' && currentUser.role === UserRole.Admin && <span className="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">Pendente</span>}</td>
+                                        <td className="px-6 py-4 flex items-center">
+                                            {item.status || 'N/A'} 
+                                            <StatusBadge status={item.approval_status} reason={item.rejection_reason} />
+                                        </td>
                                         <td className="px-6 py-4">
                                             <button data-testid="details-button" onClick={() => setSelectedEquipment(item)} className="text-brand-primary hover:underline">
                                                 Detalhes

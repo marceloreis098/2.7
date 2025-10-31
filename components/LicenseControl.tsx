@@ -143,7 +143,7 @@ const LicenseFormModal: React.FC<{
     onSave: () => void;
     currentUser: User;
 }> = ({ license, productNames, onClose, onSave, currentUser }) => {
-    const [formData, setFormData] = useState<Omit<License, 'id' | 'approval_status'>>({
+    const [formData, setFormData] = useState<Omit<License, 'id' | 'approval_status' | 'rejection_reason'>>({
         produto: '',
         tipoLicenca: '',
         chaveSerial: '',
@@ -156,6 +156,7 @@ const LicenseFormModal: React.FC<{
         contaRazao: '',
         nomeComputador: '',
         numeroChamado: '',
+        observacoes: ''
     });
     const [isSaving, setIsSaving] = useState(false);
 
@@ -174,12 +175,13 @@ const LicenseFormModal: React.FC<{
                 contaRazao: license.contaRazao || '',
                 nomeComputador: license.nomeComputador || '',
                 numeroChamado: license.numeroChamado || '',
+                observacoes: license.observacoes || ''
             });
         }
     }, [license]);
 
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
@@ -237,6 +239,17 @@ const LicenseFormModal: React.FC<{
                     <div className="sm:col-span-2">
                          <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Data de Vencimento (deixe em branco se for perpétua)</label>
                          <input type="date" name="dataExpiracao" value={(formData.dataExpiracao || '').split('T')[0]} onChange={handleChange} className="w-full mt-1 p-2 border dark:border-dark-border rounded-md bg-white dark:bg-gray-800" />
+                    </div>
+                     <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-dark-text-secondary">Observações</label>
+                        <textarea
+                            name="observacoes"
+                            value={formData.observacoes}
+                            onChange={handleChange}
+                            rows={3}
+                            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-dark-border rounded-md"
+                            placeholder="Adicione qualquer informação relevante sobre a solicitação ou a licença..."
+                        ></textarea>
                     </div>
                 </div>
                 <div className="p-4 bg-gray-50 dark:bg-dark-card/50 border-t dark:border-dark-border flex justify-end gap-3 flex-shrink-0">
@@ -361,7 +374,6 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                 await Promise.all(renamePromises);
                 alert('Nomes de produtos atualizados com sucesso.');
 
-                // After renaming products, also rename keys in the license totals object
                 const updatedTotals = { ...totalLicenses };
                 let totalsChanged = false;
                 Object.entries(renames).forEach(([oldName, newName]) => {
@@ -482,34 +494,21 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         );
     };
 
-    // FIX: Create a robust date parsing function to handle multiple formats.
     const parseDateString = (dateStr: string): Date | null => {
         if (!dateStr || typeof dateStr !== 'string') return null;
-
-        // Try standard ISO format first (YYYY-MM-DD), which is reliable
         let date = new Date(dateStr);
-        if (!isNaN(date.getTime())) {
-            return date;
-        }
-
-        // Try to parse DD/MM/YYYY or DD-MM-YYYY
+        if (!isNaN(date.getTime())) return date;
         const parts = dateStr.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
         if (parts) {
-            // parts[1] = day, parts[2] = month, parts[3] = year
-            // The month is 0-indexed in JavaScript's Date constructor
             date = new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]));
-            if (!isNaN(date.getTime())) {
-                return date;
-            }
+            if (!isNaN(date.getTime())) return date;
         }
-        
-        return null; // Return null if all parsing attempts fail
+        return null;
     };
 
     const isExpiringSoon = (dateStr: string) => {
         const expDate = parseDateString(dateStr);
         if (!expDate) return false;
-
         const today = new Date();
         const thirtyDaysFromNow = new Date();
         thirtyDaysFromNow.setDate(today.getDate() + 30);
@@ -518,31 +517,39 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
      const isExpired = (dateStr: string) => {
         const expDate = parseDateString(dateStr);
         if (!expDate) return false;
-        
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // Compare dates only
+        today.setHours(0, 0, 0, 0);
         return expDate < today;
     }
 
     const ExpirationStatus: React.FC<{dateStr: string}> = ({dateStr}) => {
         if (!dateStr || dateStr.toUpperCase() === 'N/A') return <span>Perpétua</span>;
-        
         const date = parseDateString(dateStr);
-        if (!date) {
-            return <span className="font-semibold flex items-center gap-1.5 text-red-500"><Icon name="TriangleAlert" size={16} /> Data Inválida</span>;
-        }
-
+        if (!date) return <span className="font-semibold flex items-center gap-1.5 text-red-500"><Icon name="TriangleAlert" size={16} /> Data Inválida</span>;
         const expiring = isExpiringSoon(dateStr);
         const expired = isExpired(dateStr);
         const color = expired ? 'text-red-500 dark:text-red-400' : expiring ? 'text-yellow-500 dark:text-yellow-400' : '';
         const icon = expired ? 'TriangleAlert' : expiring ? 'Timer' : null;
-
         return (
             <span className={`font-semibold flex items-center gap-1.5 ${color}`}>
                 {icon && <Icon name={icon} size={16} />}
                 {date.toLocaleDateString()}
             </span>
         )
+    }
+
+    const StatusIndicator: React.FC<{license: License}> = ({license}) => {
+        if (license.approval_status === 'pending_approval') {
+            return <span className="text-xs font-semibold bg-yellow-200 text-yellow-800 px-2.5 py-0.5 rounded-full">Pendente</span>
+        }
+        if (license.approval_status === 'rejected') {
+            return (
+                 <span className="text-xs font-semibold bg-red-200 text-red-800 px-2.5 py-0.5 rounded-full" title={license.rejection_reason}>
+                    Rejeitado
+                </span>
+            )
+        }
+        return null;
     }
 
     const ActionButtons: React.FC<{license: License}> = ({license}) => (
@@ -587,10 +594,10 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                     {Object.keys(groupedLicenses).sort().map(productName => {
                         const licensesInGroup = groupedLicenses[productName];
                         const isExpanded = expandedProducts.includes(productName);
-                        const usedCount = licensesInGroup.length;
+                        const usedCount = licensesInGroup.filter(l => l.approval_status !== 'rejected').length;
                         const totalCount = totalLicenses[productName] || 0;
                         const availableCount = totalCount - usedCount;
-                        const pendingCount = isAdmin ? licensesInGroup.filter(l => l.approval_status === 'pending_approval').length : 0;
+                        const pendingCount = licensesInGroup.filter(l => l.approval_status === 'pending_approval').length;
                         
                         return (
                             <div key={productName} className="border dark:border-dark-border rounded-lg overflow-hidden transition-all duration-300 animate-fade-in-up">
@@ -633,19 +640,21 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                                                 <tr>
                                                     <th scope="col" className="px-6 py-3">Usuário</th>
                                                     <th scope="col" className="px-6 py-3">Chave/Serial</th>
-                                                    <th scope="col" className="px-6 py-3">Centro de Custo</th>
                                                     <th scope="col" className="px-6 py-3">Expiração</th>
+                                                    <th scope="col" className="px-6 py-3">Status</th>
                                                     {isAdmin && <th scope="col" className="px-6 py-3 text-right">Ações</th>}
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {licensesInGroup.map(license => (
-                                                    <tr key={license.id} className={`border-b dark:border-dark-border last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 ${license.approval_status === 'pending_approval' ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-white dark:bg-dark-card'}`}>
+                                                    <tr key={license.id} className={`border-b dark:border-dark-border last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 ${license.approval_status === 'pending_approval' ? 'bg-yellow-50 dark:bg-yellow-900/20' : license.approval_status === 'rejected' ? 'bg-red-50 dark:bg-red-900/20 opacity-70' : 'bg-white dark:bg-dark-card'}`}>
                                                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-dark-text-primary">{license.usuario}</td>
                                                         <td className="px-6 py-4 font-mono text-xs">{license.chaveSerial}</td>
-                                                        <td className="px-6 py-4">{license.centroCusto || 'N/A'}</td>
                                                         <td className="px-6 py-4">
                                                             <ExpirationStatus dateStr={license.dataExpiracao}/>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                          <StatusIndicator license={license} />
                                                         </td>
                                                         {isAdmin && (
                                                             <td className="px-6 py-4 flex justify-end">

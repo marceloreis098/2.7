@@ -97,7 +97,9 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
             termoResponsabilidade TEXT,
             foto TEXT,
             qrCode TEXT,
-            approval_status VARCHAR(20) NOT NULL DEFAULT 'approved'
+            approval_status VARCHAR(20) NOT NULL DEFAULT 'approved',
+            observacoes TEXT,
+            rejection_reason TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `;
 
@@ -129,7 +131,9 @@ const createTablesAndSeedAdmin = async (connectionPool) => {
             contaRazao VARCHAR(255),
             nomeComputador VARCHAR(255),
             numeroChamado VARCHAR(255),
-            approval_status VARCHAR(20) NOT NULL DEFAULT 'approved'
+            approval_status VARCHAR(20) NOT NULL DEFAULT 'approved',
+            observacoes TEXT,
+            rejection_reason TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `;
 
@@ -233,16 +237,16 @@ const initializeDatabase = async () => {
                 `);
                 console.log("Migration successful: Added new columns to licenses table.");
             }
-             // Migration for approval status
+             // Migration for approval status and observations
             const [equipmentApprovalCol] = await migrationConnection.query("SHOW COLUMNS FROM `equipment` LIKE 'approval_status'");
             if (equipmentApprovalCol.length === 0) {
-                console.log("Adding 'approval_status' to equipment table...");
-                await migrationConnection.query("ALTER TABLE `equipment` ADD COLUMN `approval_status` VARCHAR(20) NOT NULL DEFAULT 'approved';");
+                console.log("Adding 'approval_status', 'observacoes', 'rejection_reason' to equipment table...");
+                await migrationConnection.query("ALTER TABLE `equipment` ADD COLUMN `approval_status` VARCHAR(20) NOT NULL DEFAULT 'approved', ADD COLUMN `observacoes` TEXT, ADD COLUMN `rejection_reason` TEXT;");
             }
             const [licenseApprovalCol] = await migrationConnection.query("SHOW COLUMNS FROM `licenses` LIKE 'approval_status'");
             if (licenseApprovalCol.length === 0) {
-                console.log("Adding 'approval_status' to licenses table...");
-                await migrationConnection.query("ALTER TABLE `licenses` ADD COLUMN `approval_status` VARCHAR(20) NOT NULL DEFAULT 'approved';");
+                console.log("Adding 'approval_status', 'observacoes', 'rejection_reason' to licenses table...");
+                await migrationConnection.query("ALTER TABLE `licenses` ADD COLUMN `approval_status` VARCHAR(20) NOT NULL DEFAULT 'approved', ADD COLUMN `observacoes` TEXT, ADD COLUMN `rejection_reason` TEXT;");
             }
         } finally {
             migrationConnection.release();
@@ -357,12 +361,7 @@ app.post('/api/auth/2fa/disable', async (req, res) => {
 // --- EQUIPMENT ROUTES ---
 app.get('/api/equipment', async (req, res) => {
     try {
-        const { role } = req.query;
-        let query = 'SELECT * FROM equipment';
-        if (role && role !== 'Admin') {
-            query += " WHERE approval_status = 'approved'";
-        }
-        const [rows] = await db.query(query);
+        const [rows] = await db.query('SELECT * FROM equipment');
         res.json(rows);
     } catch (error) {
         handleApiError(res, error, 'get equipment');
@@ -416,7 +415,6 @@ app.put('/api/equipment/:id', async (req, res) => {
         
         const changes = [];
         for (const key in equipmentData) {
-            // Using a loose comparison to handle type differences (e.g., null vs '')
             if (oldEquipment[key] != equipmentData[key]) {
                 changes.push(`${key}: de '${oldEquipment[key] || ''}' para '${equipmentData[key] || ''}'`);
             }
@@ -477,12 +475,7 @@ app.post('/api/equipment/import', async (req, res) => {
 // --- LICENSE ROUTES ---
 app.get('/api/licenses', async (req, res) => {
     try {
-        const { role } = req.query;
-        let query = 'SELECT * FROM licenses';
-        if (role && role !== 'Admin') {
-            query += " WHERE approval_status = 'approved'";
-        }
-        const [rows] = await db.query(query);
+        const [rows] = await db.query('SELECT * FROM licenses');
         res.json(rows);
     } catch (error) {
         handleApiError(res, error, 'get licenses');
@@ -556,7 +549,6 @@ app.post('/api/licenses/import', async (req, res) => {
         await connection.beginTransaction();
         await connection.query('DELETE FROM licenses WHERE produto = ?', [productName]);
         for (const license of licenses) {
-            // Ensure product name from the file matches the target product
             license.produto = productName; 
             await connection.query('INSERT INTO licenses SET ?', [license]);
         }
@@ -595,7 +587,7 @@ app.get('/api/config/licenseTotals', async (req, res) => {
         if (rows.length > 0 && rows[0].config_value) {
             res.json(JSON.parse(rows[0].config_value));
         } else {
-            res.json({}); // Return empty object if not set
+            res.json({});
         }
     } catch (error) {
         handleApiError(res, error, 'get license totals');
@@ -721,7 +713,6 @@ app.post('/api/users/:id/disable-2fa', async (req, res) => {
         await connection.beginTransaction();
         const userId = req.params.id;
         
-        // In a real app, you'd get the admin's username from an authenticated session
         const adminUsername = 'admin'; 
         
         await connection.query('UPDATE users SET is2FAEnabled = FALSE, twoFactorSecret = NULL WHERE id = ?', [userId]);
@@ -772,7 +763,7 @@ app.post('/api/approvals/approve', async (req, res) => {
 });
 
 app.post('/api/approvals/reject', async (req, res) => {
-    const { type, id, changedBy } = req.body;
+    const { type, id, changedBy, rejectionReason } = req.body;
     if (!['equipment', 'license'].includes(type)) {
         return res.status(400).json({ message: 'Invalid item type' });
     }
@@ -780,10 +771,10 @@ app.post('/api/approvals/reject', async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        await connection.query(`DELETE FROM ${tableName} WHERE id = ?`, [id]);
-        await logAudit(changedBy, 'DELETE', type.toUpperCase(), id, 'Rejeitada a criação do item (item excluído).', connection);
+        await connection.query(`UPDATE ${tableName} SET approval_status = 'rejected', rejection_reason = ? WHERE id = ?`, [rejectionReason, id]);
+        await logAudit(changedBy, 'UPDATE', type.toUpperCase(), id, `Rejeitada a criação do item. Motivo: ${rejectionReason}`, connection);
         await connection.commit();
-        res.json({ message: 'Item rejected and deleted successfully.' });
+        res.json({ message: 'Item rejected successfully.' });
     } catch (error) {
         await connection.rollback();
         handleApiError(res, error, 'reject item');
