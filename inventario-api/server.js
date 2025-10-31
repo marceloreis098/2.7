@@ -526,35 +526,32 @@ app.post('/api/licenses', async (req, res) => {
 
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
         
-        // Explicitly map request data to prevent SQL injection and handle nulls
-        const newLicense = {
-            produto: licenseData.produto,
-            tipoLicenca: licenseData.tipoLicenca || null,
-            chaveSerial: licenseData.chaveSerial,
-            dataExpiracao: licenseData.dataExpiracao || null,
-            usuario: licenseData.usuario,
-            cargo: licenseData.cargo || null,
-            setor: licenseData.setor || null,
-            gestor: licenseData.gestor || null,
-            centroCusto: licenseData.centroCusto || null,
-            contaRazao: licenseData.contaRazao || null,
-            nomeComputador: licenseData.nomeComputador || null,
-            numeroChamado: licenseData.numeroChamado || null,
-            observacoes: licenseData.observacoes || null,
-            approval_status: approval_status,
-            rejection_reason: null
-        };
+        // Define all columns for the insert to ensure order and completeness
+        const columns = [
+            'produto', 'tipoLicenca', 'chaveSerial', 'dataExpiracao', 'usuario', 'cargo',
+            'setor', 'gestor', 'centroCusto', 'contaRazao', 'nomeComputador',
+            'numeroChamado', 'observacoes', 'approval_status', 'rejection_reason'
+        ];
+
+        // Create an array of values in the correct order, converting empty/falsy values to null
+        const values = columns.map(col => {
+            if (col === 'approval_status') return approval_status;
+            if (col === 'rejection_reason') return null;
+            return licenseData[col] || null;
+        });
+
+        const sql = `INSERT INTO licenses (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
         
-        const [result] = await connection.query('INSERT INTO licenses SET ?', newLicense);
+        const [result] = await connection.query(sql, values);
         const newId = result.insertId;
         
         const auditDetails = approval_status === 'pending_approval'
-            ? `Solicitada criação de licença para ${newLicense.produto}`
-            : `Criada licença para ${newLicense.produto}`;
+            ? `Solicitada criação de licença para ${licenseData.produto}`
+            : `Criada licença para ${licenseData.produto}`;
         await logAudit(changedBy, 'CREATE', 'LICENSE', newId, auditDetails, connection);
 
         await connection.commit();
-        res.status(201).json({ id: newId, ...newLicense });
+        res.status(201).json({ id: newId, ...licenseData, approval_status });
     } catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
@@ -571,7 +568,7 @@ app.put('/api/licenses/:id', async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        const { changedBy, ...licenseData } = req.body;
+        const { changedBy, id, ...licenseData } = req.body; // Exclude id from the update payload
         await connection.query('UPDATE licenses SET ? WHERE id = ?', [licenseData, req.params.id]);
         await logAudit(changedBy, 'UPDATE', 'LICENSE', req.params.id, `Atualizada licença para ${licenseData.produto}`, connection);
         await connection.commit();
