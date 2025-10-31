@@ -383,36 +383,37 @@ app.post('/api/equipment', async (req, res) => {
         await connection.beginTransaction();
         const { changedBy, userRole, ...equipmentData } = req.body;
 
-        if (!equipmentData.equipamento || equipmentData.equipamento.trim() === '') {
+        if (!equipmentData.equipamento?.trim()) {
             return res.status(400).json({ message: 'O campo "Equipamento" é obrigatório.' });
         }
 
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
-        const dataToInsert = { ...equipmentData, approval_status };
 
-        const allowedColumns = [
-            'equipamento', 'garantia', 'patrimonio', 'serial', 'usuarioAtual', 'usuarioAnterior',
-            'local', 'setor', 'dataEntregaUsuario', 'status', 'dataDevolucao', 'tipo',
-            'notaCompra', 'notaPlKm', 'termoResponsabilidade', 'foto', 'qrCode',
-            'approval_status', 'observacoes'
-        ];
+        // Mapeia diretamente os campos recebidos, tratando o caso especial do patrimônio
+        // A biblioteca mysql2 ignora chaves com valor 'undefined', o que é seguro.
+        const dataToInsert = {
+            equipamento: equipmentData.equipamento,
+            garantia: equipmentData.garantia,
+            patrimonio: equipmentData.patrimonio === '' ? null : equipmentData.patrimonio,
+            serial: equipmentData.serial,
+            usuarioAtual: equipmentData.usuarioAtual,
+            usuarioAnterior: equipmentData.usuarioAnterior,
+            local: equipmentData.local,
+            setor: equipmentData.setor,
+            dataEntregaUsuario: equipmentData.dataEntregaUsuario,
+            status: equipmentData.status,
+            dataDevolucao: equipmentData.dataDevolucao,
+            tipo: equipmentData.tipo,
+            notaCompra: equipmentData.notaCompra,
+            notaPlKm: equipmentData.notaPlKm,
+            termoResponsabilidade: equipmentData.termoResponsabilidade,
+            foto: equipmentData.foto,
+            qrCode: equipmentData.qrCode,
+            observacoes: equipmentData.observacoes,
+            approval_status: approval_status
+        };
 
-        const filteredData = {};
-        for (const col of allowedColumns) {
-            if (dataToInsert[col] !== undefined) {
-                let value = dataToInsert[col];
-                if (col === 'patrimonio' && value === '') {
-                    value = null;
-                }
-                filteredData[col] = value;
-            }
-        }
-        
-        if (Object.keys(filteredData).length === 0) {
-            return res.status(400).json({ message: 'No valid data provided to insert.' });
-        }
-
-        const [result] = await connection.query('INSERT INTO equipment SET ?', [filteredData]);
+        const [result] = await connection.query('INSERT INTO equipment SET ?', [dataToInsert]);
         const newId = result.insertId;
 
         const auditDetails = approval_status === 'pending_approval'
@@ -422,7 +423,7 @@ app.post('/api/equipment', async (req, res) => {
         await logAudit(changedBy, 'CREATE', 'EQUIPMENT', newId, auditDetails, connection);
         
         await connection.commit();
-        res.status(201).json({ id: newId, ...filteredData });
+        res.status(201).json({ id: newId, ...equipmentData, approval_status });
     } catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
@@ -520,30 +521,30 @@ app.post('/api/licenses', async (req, res) => {
         const { changedBy, userRole, ...licenseData } = req.body;
 
         if (!licenseData.produto?.trim() || !licenseData.chaveSerial?.trim() || !licenseData.usuario?.trim()) {
-            return res.status(400).json({ message: "Produto, Chave Serial e Usuário são campos obrigatórios e não podem estar em branco." });
+            return res.status(400).json({ message: "Produto, Chave Serial e Usuário são campos obrigatórios." });
         }
 
         const approval_status = userRole === 'Admin' ? 'approved' : 'pending_approval';
-        const dataToInsert = { ...licenseData, approval_status };
+        
+        // Mapeia diretamente os campos recebidos. A biblioteca mysql2 ignora chaves com valor 'undefined'.
+        const dataToInsert = {
+            produto: licenseData.produto,
+            tipoLicenca: licenseData.tipoLicenca,
+            chaveSerial: licenseData.chaveSerial,
+            dataExpiracao: licenseData.dataExpiracao,
+            usuario: licenseData.usuario,
+            cargo: licenseData.cargo,
+            setor: licenseData.setor,
+            gestor: licenseData.gestor,
+            centroCusto: licenseData.centroCusto,
+            contaRazao: licenseData.contaRazao,
+            nomeComputador: licenseData.nomeComputador,
+            numeroChamado: licenseData.numeroChamado,
+            observacoes: licenseData.observacoes,
+            approval_status: approval_status,
+        };
 
-        const allowedColumns = [
-            'produto', 'tipoLicenca', 'chaveSerial', 'dataExpiracao', 'usuario',
-            'cargo', 'setor', 'gestor', 'centroCusto', 'contaRazao',
-            'nomeComputador', 'numeroChamado', 'approval_status', 'observacoes'
-        ];
-
-        const filteredData = {};
-        for (const col of allowedColumns) {
-            if (dataToInsert[col] !== undefined) {
-                filteredData[col] = dataToInsert[col];
-            }
-        }
-
-        if (Object.keys(filteredData).length === 0) {
-            return res.status(400).json({ message: 'No valid data provided to insert.' });
-        }
-
-        const [result] = await connection.query('INSERT INTO licenses SET ?', [filteredData]);
+        const [result] = await connection.query('INSERT INTO licenses SET ?', [dataToInsert]);
         const newId = result.insertId;
         
         const auditDetails = approval_status === 'pending_approval'
@@ -552,7 +553,7 @@ app.post('/api/licenses', async (req, res) => {
         await logAudit(changedBy, 'CREATE', 'LICENSE', newId, auditDetails, connection);
 
         await connection.commit();
-        res.status(201).json({ id: newId, ...filteredData });
+        res.status(201).json({ id: newId, ...licenseData, approval_status });
     } catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {

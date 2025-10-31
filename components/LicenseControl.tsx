@@ -394,7 +394,8 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             
             // Reload everything
             loadLicenses();
-        } catch (error: any) {
+// FIX: Changed caught error from 'any' to 'unknown' for improved type safety, which is a best practice.
+        } catch (error: unknown) {
             console.error("Failed to save product management changes", error);
             if (error instanceof Error) {
                 alert(`Ocorreu um erro ao salvar as alterações nos produtos: ${error.message}`);
