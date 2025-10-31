@@ -193,7 +193,18 @@ const LicenseFormModal: React.FC<{
         setSaveError('');
         try {
             if (license) {
-                await updateLicense({ ...formData, id: license.id } as License, currentUser.username);
+                const updatedLicenseData: License = {
+                    ...license,
+                    ...formData,
+                };
+    
+                // If editing a rejected item, resubmit for approval
+                if (license.approval_status === 'rejected') {
+                    updatedLicenseData.approval_status = 'pending_approval';
+                    updatedLicenseData.rejection_reason = undefined;
+                }
+    
+                await updateLicense(updatedLicenseData, currentUser.username);
             } else {
                 if (!formData.produto || !formData.chaveSerial || !formData.usuario) {
                     throw new Error("Produto, Chave Serial e Usuário são campos obrigatórios.");
@@ -222,6 +233,13 @@ const LicenseFormModal: React.FC<{
                  {saveError && (
                     <div className="p-4 bg-red-100 dark:bg-red-900/50 border-b border-red-200 dark:border-red-800 text-red-700 dark:text-red-200 flex-shrink-0">
                         <strong>Erro ao Salvar:</strong> {saveError}
+                    </div>
+                )}
+                {license?.approval_status === 'rejected' && license.rejection_reason && (
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+                        <h4 className="font-bold flex items-center gap-2"><Icon name="Info" size={16} />Esta licença foi rejeitada.</h4>
+                        <p className="text-sm mt-1 pl-6"><strong>Motivo:</strong> {license.rejection_reason}</p>
+                        <p className="text-sm mt-2 pl-6"><em>Por favor, corrija as informações e salve para reenviar para aprovação.</em></p>
                     </div>
                 )}
                 <div className="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto">
@@ -538,7 +556,14 @@ const LicenseControl: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                             {filteredLicenses.map(license => (
                                 <tr key={license.id} className="bg-white dark:bg-dark-card border-b dark:border-dark-border hover:bg-gray-50 dark:hover:bg-gray-700">
                                     {!selectedProduct && <td className="px-4 py-4 font-medium text-gray-900 dark:text-dark-text-primary">{license.produto}</td>}
-                                    <td className="px-4 py-4 flex items-center">{license.usuario} <StatusBadge license={license} /></td>
+                                    <td className="px-4 py-4">
+                                        <div className="flex items-center">{license.usuario} <StatusBadge license={license} /></div>
+                                        {license.approval_status === 'rejected' && license.rejection_reason && (
+                                            <p className="text-xs text-red-600 dark:text-red-400 mt-1 italic">
+                                                <strong>Motivo:</strong> {license.rejection_reason}
+                                            </p>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-4 font-mono text-xs">{license.chaveSerial}</td>
                                     <td className="px-4 py-4">{license.tipoLicenca}</td>
                                     <td className="px-4 py-4">{license.dataExpiracao}</td>
